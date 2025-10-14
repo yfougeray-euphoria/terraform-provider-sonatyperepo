@@ -251,6 +251,7 @@ func (p *SonatypeRepoProvider) Resources(ctx context.Context) []func() resource.
 		system.NewSystemConfigIqConnectionResource,
 		system.NewSecurityRealmsResource,
 		system.NewSecuritySamlResource,
+		system.NewSecurityTaskResource,
 		user.NewUserResource,
 	}
 }
