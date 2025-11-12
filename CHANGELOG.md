@@ -2,6 +2,61 @@
 
 ## X.Y.Z (UNRELEASED)
 
+_TBC_
+
+## 0.11.1 November 11, 2025
+
+BUG FIXES:
+* Fixed issue with import for `sonatyperepo_repository_*_proxy` resources [GH-153] (thanks @yfougeray-euphoria)
+
+## 0.11.0 November 11, 2025
+
+FEATURES:
+* **New Data Source:** `sonatyperepo_capabilities` [GH-157]
+* **New Data Source:** `sonatyperepo_routing_rule` [GH-152] (thanks @yfougeray-euphoria)
+* **New Data Source:** `sonatyperepo_routing_rules` [GH-152] (thanks @yfougeray-euphoria)
+* **New Data Source:** `sonatyperepo_user_tokens` [GH-151] (thanks @yfougeray-euphoria)
+* **New Resource:** `sonatyperepo_capability_audit` [GH-159]
+* **New Resource:** `sonatyperepo_capability_base_url` [GH-156]
+* **New Resource:** `sonatyperepo_capability_custom_s3_regions` [GH-186]
+* **New Resource:** `sonatyperepo_capability_default_role` [GH-188]
+* **New Resource:** `sonatyperepo_capability_firewall_audit_and_quarantine` [GH-163]
+* **New Resource:** `sonatyperepo_capability_healthcheck` [GH-163]
+* **New Resource:** `sonatyperepo_capability_outreach_management` [GH-166]
+* **New Resource:** `sonatyperepo_capability_rut_auth` [GH-195]
+* **New Resource:** `sonatyperepo_capability_storage_settings` [GH-194]
+* **New Resource:** `sonatyperepo_capability_ui_branding` [GH-168]
+* **New Resource:** `sonatyperepo_capability_ui_settings` [GH-169]
+* **New Resource:** `sonatyperepo_capability_webhook_global` [GH-183]
+* **New Resource:** `sonatyperepo_capability_webhook_repository` [GH-184]
+* **New Resource:** `sonatyperepo_routing_rule` [GH-152] (thanks @yfougeray-euphoria)
+* **New Resource:** `sonatyperepo_user_tokens` [GH-151] (thanks @yfougeray-euphoria)
+
+## 0.10.0 November 4, 2025
+
+FEATURES:
+* **New Resource:** `sonatyperepo_task_blobstore_compact` [GH-92]
+* **New Resource:** `sonatyperepo_task_malware_remediator` [GH-92]
+* **New Resource:** `sonatyperepo_task_repair_create_browse_nodes` [GH-92]
+* **New Resource:** `sonatyperepo_task_repository_maven_remove_snapshots` [GH-92]
+* **New Resource:** `sonatyperepo_task_repository_docker_gc` [GH-92]
+* **New Resource:** `sonatyperepo_task_repository_docker_upload_purge` [GH-92]
+
+ENHANCEMENTS:
+* You can now supply a `version_hint` in the Provider configuration to work around scenarios where the `Server` header is stripped from responses. This can be typical when using a reverse proxy or load balancer in front of Sonatype Nexus Repository. [GH-109]
+
+## 0.9.0 October 30, 2025
+
+ENHANCEMENTS:
+* Resource `sonatyperepo_repository_docker_group` now supports import [GH-126] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_repository_docker_hosted` now supports import [GH-126] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_repository_docker_proxy` now supports import [GH-126] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_role` now supports import [GH-128] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_system_config_mail` now supports import [GH-119] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_security_realms` now supports import [GH-118] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_security_saml` now supports import [GH-120] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_system_anonymous_access` now supports import [GH-117] (thanks @yfougeray-euphoria)
+* Resource `sonatyperepo_user` now supports import [GH-97]
 
 ## 0.8.2 October 23, 2025
 

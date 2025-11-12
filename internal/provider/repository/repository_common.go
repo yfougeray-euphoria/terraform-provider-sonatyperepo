@@ -198,7 +198,7 @@ func (r *repositoryResource) Read(ctx context.Context, req resource.ReadRequest,
 	}
 
 	// Update State from Response
-	r.RepositoryFormat.UpdateStateFromApi(stateModel, apiResponse)
+	stateModel = r.RepositoryFormat.UpdateStateFromApi(stateModel, apiResponse)
 	resp.Diagnostics.Append(resp.State.Set(ctx, &stateModel)...)
 	if resp.Diagnostics.HasError() {
 		return
@@ -307,47 +307,117 @@ func (r *repositoryResource) Delete(ctx context.Context, req resource.DeleteRequ
 		return
 	}
 
-	attempts := 1
-	maxAttempts := 3
-	success := false
+	// Attempt deletion with retries
+	success := r.attemptDeleteWithRetries(ctx, repositoryName.ValueString(), resp)
+	if resp.Diagnostics.HasError() {
+		return
+	}
 
-	for !success && attempts < maxAttempts {
-		httpResponse, err := r.RepositoryFormat.DoDeleteRequest(repositoryName.ValueString(), r.Client, ctx)
+	// Check if deletion was successful after all retry attempts
+	if !success {
+		resp.Diagnostics.AddError(
+			fmt.Sprintf("Failed to delete %s %s Repository after 3 attempts", r.RepositoryFormat.GetKey(), r.RepositoryType.String()),
+			fmt.Sprintf("Repository '%s' could not be deleted. This may be due to dependencies (e.g., group membership, routing rules) or internal Nexus state issues. Please check Nexus logs and ensure the repository is not referenced by other resources.", repositoryName.ValueString()),
+		)
+	}
+}
+
+func (r *repositoryResource) attemptDeleteWithRetries(ctx context.Context, repositoryName string, resp *resource.DeleteResponse) bool {
+	maxAttempts := 3
+	for attempt := 1; attempt <= maxAttempts; attempt++ {
+		httpResponse, err := r.RepositoryFormat.DoDeleteRequest(repositoryName, r.Client, ctx)
 
 		// Trap 500 Error as they occur when Repo is not in appropriate internal state
 		if httpResponse.StatusCode == http.StatusInternalServerError {
-			tflog.Info(ctx, fmt.Sprintf("Unexpected response when deleting %s %s Repository (attempt %d)", r.RepositoryFormat.GetKey(), r.RepositoryFormat, attempts))
-			attempts++
+			tflog.Info(ctx, fmt.Sprintf("Unexpected response when deleting %s %s Repository (attempt %d)", r.RepositoryFormat.GetKey(), r.RepositoryFormat, attempt))
+			time.Sleep(5 * time.Second)
 			continue
 		}
 
 		if err != nil {
-			if httpResponse.StatusCode == http.StatusNotFound {
-				resp.State.RemoveResource(ctx)
-				resp.Diagnostics.AddWarning(
-					fmt.Sprintf(REPOSITORY_ERROR_DID_NOT_EXIST, r.RepositoryType.String(), r.RepositoryFormat.GetKey(), "delete"),
-					fmt.Sprintf(REPOSITORY_GENERAL_ERROR_RESPONSE_GENERAL, httpResponse.Status),
-				)
-			} else {
-				resp.Diagnostics.AddError(
-					fmt.Sprintf(REPOSITORY_ERROR_DID_NOT_EXIST, r.RepositoryFormat.GetKey(), r.RepositoryFormat, "delete"),
-					fmt.Sprintf(REPOSITORY_GENERAL_ERROR_RESPONSE_WITH_ERR, httpResponse.Status, err),
-				)
-			}
-			return
+			r.handleDeleteError(ctx, httpResponse, err, resp)
+			return false
 		}
-		if httpResponse.StatusCode != http.StatusNoContent {
-			resp.Diagnostics.AddError(
-				fmt.Sprintf("Unexpected response when deleting %s %s Repository (attempt %d)", r.RepositoryFormat.GetKey(), r.RepositoryFormat, attempts),
-				fmt.Sprintf("Error response: %s", httpResponse.Status),
-			)
 
-			time.Sleep(1 * time.Second)
-			attempts++
-		} else {
-			success = true
+		if httpResponse.StatusCode == http.StatusNoContent {
+			return true
 		}
+
+		tflog.Warn(ctx, fmt.Sprintf("Unexpected response when deleting %s %s Repository (attempt %d/%d): %s",
+			r.RepositoryFormat.GetKey(), r.RepositoryType.String(), attempt, maxAttempts, httpResponse.Status))
+		time.Sleep(5 * time.Second)
 	}
+	return false
+}
+
+func (r *repositoryResource) handleDeleteError(ctx context.Context, httpResponse *http.Response, err error, resp *resource.DeleteResponse) {
+	if httpResponse.StatusCode == http.StatusNotFound {
+		resp.State.RemoveResource(ctx)
+		resp.Diagnostics.AddWarning(
+			fmt.Sprintf(REPOSITORY_ERROR_DID_NOT_EXIST, r.RepositoryType.String(), r.RepositoryFormat.GetKey(), "delete"),
+			fmt.Sprintf(REPOSITORY_GENERAL_ERROR_RESPONSE_GENERAL, httpResponse.Status),
+		)
+		return
+	}
+	resp.Diagnostics.AddError(
+		fmt.Sprintf(REPOSITORY_ERROR_DID_NOT_EXIST, r.RepositoryFormat.GetKey(), r.RepositoryFormat, "delete"),
+		fmt.Sprintf(REPOSITORY_GENERAL_ERROR_RESPONSE_WITH_ERR, httpResponse.Status, err),
+	)
+}
+
+// ImportState imports the resource by name.
+func (r *repositoryResource) ImportState(ctx context.Context, req resource.ImportStateRequest, resp *resource.ImportStateResponse) {
+	// The import ID is the repository name
+	repositoryName := req.ID
+
+	// Set API Context
+	ctx = context.WithValue(
+		ctx,
+		sonatyperepo.ContextBasicAuth,
+		r.Auth,
+	)
+
+	// Call format-specific import request to fetch repository data from API
+	apiResponse, httpResponse, err := r.RepositoryFormat.DoImportRequest(repositoryName, r.Client, ctx)
+
+	// Handle errors
+	if err != nil {
+		if httpResponse != nil && httpResponse.StatusCode == http.StatusNotFound {
+			resp.Diagnostics.AddError(
+				fmt.Sprintf("Repository '%s' not found", repositoryName),
+				fmt.Sprintf("The %s %s repository '%s' does not exist or you do not have permission to access it.", 
+					r.RepositoryFormat.GetKey(), r.RepositoryType.String(), repositoryName),
+			)
+		} else {
+			common.HandleApiError(
+				fmt.Sprintf("Error importing %s %s repository", r.RepositoryFormat.GetKey(), r.RepositoryType.String()),
+				&err,
+				httpResponse,
+				&resp.Diagnostics,
+			)
+		}
+		return
+	}
+
+	// Validate that the imported repository matches the expected format and type
+	if err := r.RepositoryFormat.ValidateRepositoryForImport(apiResponse, r.RepositoryFormat.GetKey(), r.RepositoryType); err != nil {
+		resp.Diagnostics.AddError(
+			"Invalid repository type for import",
+			fmt.Sprintf("The repository '%s' exists but is not a %s %s repository: %s",
+				repositoryName, r.RepositoryFormat.GetKey(), r.RepositoryType.String(), err.Error()),
+		)
+		return
+	}
+
+	// UpdateStateFromApi expects an empty instance of the proper model type and returns a populated one
+	// Pass nil as the first parameter - UpdateStateFromApi will create the proper model type
+	stateModel := r.RepositoryFormat.UpdateStateFromApi(nil, apiResponse)
+	
+	// Update plan for state (sets last_updated timestamp)
+	stateModel = r.RepositoryFormat.UpdatePlanForState(stateModel)
+
+	// Set the state
+	resp.Diagnostics.Append(resp.State.Set(ctx, stateModel)...)
 }
 
 // ImportState implements resource import functionality
@@ -503,6 +573,9 @@ func getHostedStandardSchema(repoFormat string, repoType format.RepositoryType) 
 			"name": schema.StringAttribute{
 				Description: "Name of the Repository",
 				Required:    true,
+				PlanModifiers: []planmodifier.String{
+					stringplanmodifier.RequiresReplace(),
+				},
 			},
 			"url": schema.StringAttribute{
 				Description: "URL to access the Repository",
